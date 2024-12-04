@@ -1,16 +1,23 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import time
+import os
 
 class SpotifyController:
     def __init__(self):
-        # Initialize Spotify client with necessary permissions
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id='04e5442986914b698849921ae45c8a8f',
-            client_secret='60cde23c8114408292fad654471babf5',
-            redirect_uri='http://localhost:8888/callback',
-            scope='user-read-playback-state user-modify-playback-state'
-        ))
+        # Set up credentials
+        os.environ["SPOTIPY_CLIENT_ID"] = '04e5442986914b698849921ae45c8a8f'
+        os.environ["SPOTIPY_CLIENT_SECRET"] = '60cde23c8114408292fad654471babf5'
+        os.environ["SPOTIPY_REDIRECT_URI"] = 'http://localhost:8888/callback'
+
+        # Use the cached token from the file
+        auth_manager = SpotifyOAuth(
+            scope='user-read-playback-state user-modify-playback-state',
+            open_browser=False,
+            cache_path='.spotifycache'  # Use the cache file we created
+        )
+        
+        self.sp = spotipy.Spotify(auth_manager=auth_manager)
 
     def get_current_track(self):
         """Get information about the currently playing track"""
