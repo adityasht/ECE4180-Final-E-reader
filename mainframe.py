@@ -34,9 +34,79 @@ class EventHub:
         self.font_small = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 18)
         
         # OpenWeatherMap configuration
-        self.weather_api_key = 'YOUR_API_KEY'  # Replace with your API key
+        self.weather_api_key = '67165e9a733df491e5ed1242fa0362fb'
         self.location = self.get_location()
+        
+        # Initialize cache
+        self.weather_cache = None
+        self.last_weather_update = None
+        self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
 
+    def get_weather(self):
+        current_time = time.time()
+        
+        # Return cached data if it's still valid
+        if (self.weather_cache is not None and 
+            self.last_weather_update is not None and 
+            current_time - self.last_weather_update < self.WEATHER_UPDATE_INTERVAL):
+            return self.weather_cache
+
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=metric"
+            response = requests.get(url)
+            data = response.json()
+            
+            # Process next 3 days
+            weather_data = []
+            current_date = datetime.now().date()
+            
+            for item in data['list']:
+                forecast_date = datetime.fromtimestamp(item['dt']).date()
+                if forecast_date > current_date and len(weather_data) < 3:
+                    if not any(w['date'] == forecast_date for w in weather_data):
+                        weather_data.append({
+                            'date': forecast_date,
+                            'temp': round(item['main']['temp']),
+                            'description': item['weather'][0]['main']
+                        })
+            
+            # Update cache
+            self.weather_cache = weather_data
+            self.last_weather_update = current_time
+            
+            return weather_data
+            
+        except Exception as e:
+            logger.error(f"Weather API error: {str(e)}")
+            # If there's an error, return cached data if available
+            if self.weather_cache is not None:
+                return self.weather_cache
+                
+            # Otherwise return dummy data
+            return [
+                {'date': datetime.now().date() + timedelta(days=1), 'temp': 20, 'description': 'Sunny'},
+                {'date': datetime.now().date() + timedelta(days=2), 'temp': 18, 'description': 'Cloudy'},
+                {'date': datetime.now().date() + timedelta(days=3), 'temp': 22, 'description': 'Clear'}
+            ]
+
+    def draw_weather(self, draw):
+        weather_data = self.get_weather()
+        next_update = ""
+        if self.last_weather_update is not None:
+            minutes_until_update = int((self.WEATHER_UPDATE_INTERVAL - (time.time() - self.last_weather_update)) / 60)
+            next_update = f"Next update in: {minutes_until_update}m"
+        
+        draw.text((self.width//2 + 20, 90), f"Weather - {self.location['city']}", font=self.font_medium, fill=0)
+        draw.text((self.width//2 + 20, 115), next_update, font=self.font_small, fill=0)
+        
+        for i, day in enumerate(weather_data):
+            y_pos = 140 + i*60
+            date_str = day['date'].strftime("%A, %b %d")
+            draw.text((self.width//2 + 40, y_pos), date_str, font=self.font_small, fill=0)
+            draw.text((self.width//2 + 40, y_pos + 25), 
+                     f"{day['temp']}°C - {day['description']}", 
+                     font=self.font_small, fill=0)
+            
     def get_location(self):
         try:
             # Get IP-based location
@@ -77,34 +147,7 @@ class EventHub:
                 'strength': 0
             }
 
-    def get_weather(self):
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=metric"
-            response = requests.get(url)
-            data = response.json()
-            
-            # Process next 3 days
-            weather_data = []
-            current_date = datetime.now().date()
-            
-            for item in data['list']:
-                forecast_date = datetime.fromtimestamp(item['dt']).date()
-                if forecast_date > current_date and len(weather_data) < 3:
-                    if not any(w['date'] == forecast_date for w in weather_data):
-                        weather_data.append({
-                            'date': forecast_date,
-                            'temp': round(item['main']['temp']),
-                            'description': item['weather'][0]['main']
-                        })
-            
-            return weather_data
-        except:
-            # Return dummy data if API fails
-            return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp': 20, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp': 18, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp': 22, 'description': 'Clear'}
-            ]
+    
 
     def get_dummy_todos(self):
         return [
@@ -148,17 +191,6 @@ class EventHub:
         wifi_text = f"WiFi: {wifi_info['ssid']} ({wifi_info['strength']}%)"
         draw.text((450, 25), wifi_text, font=self.font_small, fill=0)
 
-    def draw_weather(self, draw):
-        weather_data = self.get_weather()
-        draw.text((self.width//2 + 20, 90), f"Weather - {self.location['city']}", font=self.font_medium, fill=0)
-        
-        for i, day in enumerate(weather_data):
-            y_pos = 140 + i*60
-            date_str = day['date'].strftime("%A, %b %d")
-            draw.text((self.width//2 + 40, y_pos), date_str, font=self.font_small, fill=0)
-            draw.text((self.width//2 + 40, y_pos + 25), 
-                     f"{day['temp']}°C - {day['description']}", 
-                     font=self.font_small, fill=0)
 
     def draw_todos(self, draw):
         draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
