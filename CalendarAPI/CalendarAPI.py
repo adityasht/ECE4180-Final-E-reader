@@ -17,8 +17,9 @@ class CalendarAPI:
     def __init__(self):
         # Initialize API
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-        self.token_path = os.path.join(os.curdir, 'token.pickle')
-        self.creds_path = os.path.join(os.curdir, 'CalendarAPI_creds.json')
+        self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.token_path = os.path.join(self.current_dir, 'token.pickle')
+        self.creds_path = os.path.join(self.current_dir, 'CalendarAPI_creds.json')
 
         self.calendar_service = self.setup_google_calendar()
 
