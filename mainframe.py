@@ -49,7 +49,7 @@ class EventHub:
         self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
 
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-        self.calendar_service = self.setup_google_calendar()
+        #self.calendar_service = self.setup_google_calendar()
         # Initialize calendar cache
         self.calendar_cache = None
         self.last_calendar_update = None
