@@ -13,7 +13,7 @@ import json
 import re
 
 # Setup paths
-picdir = os.path.join(os.path, 'pic')
+picdir = os.path.join('pic')
 
 
 logging.basicConfig(level=logging.INFO)
@@ -33,17 +33,6 @@ def get_weather_icon(description):
     }
     return weather_icons.get(description, 'o')
 
-def get_wifi_signal_icon(strength):
-    if strength >= 75:
-        return '[||||]'
-    elif strength >= 50:
-        return '[||| ]'
-    elif strength >= 25:
-        return '[||  ]'
-    elif strength > 0:
-        return '[|   ]'
-    else:
-        return '[    ]'
 
 class EventHub:
     def __init__(self):
@@ -64,6 +53,14 @@ class EventHub:
         self.weather_cache = None
         self.last_weather_update = None
         self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
+
+        # Initialize Bitmap Images
+        self.wifi_icons = {
+            'high': Image.open(os.path.join(picdir, 'wifi_high.bmp')),
+            'medium': Image.open(os.path.join(picdir, 'wifi_high.bmp')),
+            'low': Image.open(os.path.join(picdir, 'wifi_high.bmp')),
+            'none': Image.open(os.path.join(picdir, 'wifi_high.bmp'))
+        }
 
     def get_location(self):
         try:
@@ -193,17 +190,20 @@ class EventHub:
         draw.text((20, 20), current_time, font=self.font_large, fill=0)
         draw.text((200, 25), current_date, font=self.font_medium, fill=0)
         
-        # Modified WiFi display with line wrapping
+        # WiFi info with bitmap icon
         wifi_info = self.get_wifi_info()
-        wifi_icon = get_wifi_signal_icon(wifi_info['strength'])
-        
-        ssid = wifi_info['ssid']
-        if len(ssid) > 12:
-            ssid = f"{ssid[:12]}\n{ssid[12:]}"
-        
-        wifi_text = f"{wifi_icon}\n{ssid}"
-        draw.text((450, 15), wifi_text, font=self.font_small, fill=0)
-        draw.text((450, 50), f"{wifi_info['strength']}%", font=self.font_small, fill=0)
+        if wifi_info['strength'] >= 75:
+            wifi_icon = self.wifi_icons['high']
+        elif wifi_info['strength'] >= 50:
+            wifi_icon = self.wifi_icons['medium']
+        elif wifi_info['strength'] >= 25:
+            wifi_icon = self.wifi_icons['low']
+        else:
+            wifi_icon = self.wifi_icons['none']
+            
+        image.paste(wifi_icon, (450, 15))
+        draw.text((450 + wifi_icon.width + 10, 25), wifi_info['ssid'], 
+                 font=self.font_small, fill=0)
 
     def draw_weather(self, draw):
         weather_data = self.get_weather()
