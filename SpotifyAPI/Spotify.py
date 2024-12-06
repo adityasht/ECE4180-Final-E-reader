@@ -55,6 +55,30 @@ class SpotifyController:
         except Exception as e:
             print(f"Error pausing playback: {e}")
             return None
+        
+    def skip_next(self):
+        """Skip to next track and return track info"""
+        try:
+            self.sp.next_track()
+            # Add a small delay to allow Spotify to update
+            import time
+            time.sleep(0.5)
+            return self.get_formatted_track_info()
+        except Exception as e:
+            print(f"Error skipping to next track: {e}")
+            return None
+
+    def skip_previous(self):
+        """Skip to previous track and return track info"""
+        try:
+            self.sp.previous_track()
+            # Add a small delay to allow Spotify to update
+            import time
+            time.sleep(0.5)
+            return self.get_formatted_track_info()
+        except Exception as e:
+            print(f"Error skipping to previous track: {e}")
+            return None
 
     def toggle_playback(self):
         """Toggle between play and pause, return track info"""

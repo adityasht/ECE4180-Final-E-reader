@@ -3,31 +3,22 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import pickle
-import time
 import os
 from datetime import datetime, timedelta
-
 import logging
-# Configure logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CalendarAPI:
-        
     def __init__(self):
-        # Initialize API
-        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
         self.current_dir = os.path.dirname(os.path.abspath(__file__))
         self.token_path = os.path.join(self.current_dir, 'token.pickle')
         self.creds_path = os.path.join(self.current_dir, 'CalendarAPI_creds.json')
-
+        
+        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
         self.calendar_service = self.setup_google_calendar()
-
-        # Initialize calendar cache
-        self.calendar_cache = None
-        self.last_calendar_update = None
-        self.CALENDAR_UPDATE_INTERVAL = 300  # Update every 5 minutes
-
+        print('setup successful')
 
     def setup_google_calendar(self):
         """Set up Google Calendar API service"""
@@ -50,21 +41,11 @@ class CalendarAPI:
             service = build('calendar', 'v3', credentials=creds)
             return service
         except Exception as e:
-
             return None
 
     def get_calendar_events(self):
-        """Get today's calendar events with caching"""
-        current_time = time.time()
-        
-        # Return cached data if valid
-        if (self.calendar_cache is not None and 
-            self.last_calendar_update is not None and 
-            current_time - self.last_calendar_update < self.CALENDAR_UPDATE_INTERVAL):
-            return self.calendar_cache
-
+        """Get today's calendar events"""
         try:
-
             if not self.calendar_service:
                 print('calendar service not working')
                 return None
@@ -75,7 +56,6 @@ class CalendarAPI:
             start_of_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_day = start_of_day + timedelta(days=1, microseconds=-1)
 
-            # No need for manual timezone string manipulation - let isoformat() handle it
             events_result = self.calendar_service.events().list(
                 calendarId='primary',
                 timeMin=start_of_day.isoformat(),
@@ -105,12 +85,11 @@ class CalendarAPI:
                         'type': self.determine_event_type(event)
                     })
 
-            self.calendar_cache = formatted_events
-            self.last_calendar_update = current_time
             return formatted_events
 
         except Exception as e:
             logger.error(f"Failed to fetch calendar events: {str(e)}")
+            return None
 
     def determine_event_type(self, event):
         """Determine event type based on event details"""
@@ -130,9 +109,7 @@ class CalendarAPI:
         else:
             return 'other'
 
-    # Replace your existing draw_todos method with this one
 if __name__ == "__main__":
-    API = CalendarAPI()
-    events = API.get_calendar_events()
+    api = CalendarAPI()
+    events = api.get_calendar_events()
     print(events)
-        

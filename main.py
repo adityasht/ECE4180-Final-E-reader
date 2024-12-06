@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 import requests
 import subprocess
 import re
-import epd5in83_V2
-from CalendarAPI.CalendarAPI import CalendarAPI
+from resources import epd5in83_V2, epdconfig
+from GoogleCalendarAPI.Calendar import CalendarAPI
 from SpotifyAPI.Spotify import SpotifyController
 import select
 
@@ -17,11 +17,13 @@ import select
 # Setup paths
 resources_dir = 'resources'  # Simplified path
 
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+
+# Main Class for EventHub Mode showing your calender, weather, spotify, etc
 class EventHub:
     def __init__(self):
         self.epd = epd5in83_V2.EPD()
@@ -195,8 +197,6 @@ class EventHub:
                 {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
                 {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
             ]
-
-
 
 
     # Calendar Todo Drawing
@@ -383,7 +383,7 @@ class EventHub:
         button_x = box_left + 20
         button_y = spotify_box_top + 110
         
-        if music_data['status'] is 'Playing':
+        if music_data['status'] == 'Playing':
             image.paste(self.spotify_icons['play'], 
                       (button_x, button_y))
         else:
@@ -419,7 +419,15 @@ def main():
                     hub.spotify.toggle_playback()
                     hub.update_display()
                     last_update = time.time()
-                # Add more commands here as needed
+                elif command == 'prev_track':
+                    hub.spotify.skip_previous()
+                    hub.update_display()
+                    last_update = time.time()
+                elif command == 'next_track':
+                    hub.spotify.skip_next()
+                    hub.update_display()
+                    last_update = time.time()
+
             
             # Check if it's time for regular update
             current_time = time.time()
