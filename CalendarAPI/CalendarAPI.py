@@ -17,28 +17,32 @@ class CalendarAPI:
     def __init__(self):
         # Initialize API
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+        self.token_path = os.path.join(os.curdir, 'token.pickle')
+        self.creds_path = os.path.join(os.curdir, 'CalendarAPI_creds.json')
+
         self.calendar_service = self.setup_google_calendar()
+
         # Initialize calendar cache
         self.calendar_cache = None
         self.last_calendar_update = None
         self.CALENDAR_UPDATE_INTERVAL = 300  # Update every 5 minutes
-        print('setup successful')
+
 
     def setup_google_calendar(self):
         """Set up Google Calendar API service"""
         creds = None
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
+
+        with open(self.token_path, 'rb') as token:
+            creds = pickle.load(token)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'CalendarAPI_creds.json', self.SCOPES)
+                    self.creds_path, self.SCOPES)
                 creds = flow.run_local_server(port=0)
-            with open('token.pickle', 'wb') as token:
+            with open(self.token_path, 'wb') as token:
                 pickle.dump(creds, token)
 
         try:
