@@ -3,7 +3,7 @@
 import sys
 import os
 import logging
-from . import epd5in83_V2
+import epd5in83_V2
 import time
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
