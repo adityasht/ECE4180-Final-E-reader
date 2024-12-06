@@ -11,6 +11,11 @@ import requests
 import subprocess
 import json
 import re
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+import pickle
 
 # Setup paths
 picdir = 'pic'  # Simplified path
@@ -42,6 +47,13 @@ class EventHub:
         self.weather_cache = None
         self.last_weather_update = None
         self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
+
+        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+        self.calendar_service = self.setup_google_calendar()
+        # Initialize calendar cache
+        self.calendar_cache = None
+        self.last_calendar_update = None
+        self.CALENDAR_UPDATE_INTERVAL = 300  # Update every 5 minutes
 
     def load_images(self):
         """Load and validate all required bitmap images"""
@@ -140,6 +152,134 @@ class EventHub:
                 'ssid': 'WiFi Not Found',
                 'strength': 0
             }
+        
+    def setup_google_calendar(self):
+        """Set up Google Calendar API service"""
+        creds = None
+        if os.path.exists('token.pickle'):
+            with open('token.pickle', 'rb') as token:
+                creds = pickle.load(token)
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    'credentials.json', self.SCOPES)
+                creds = flow.run_local_server(port=0)
+            with open('token.pickle', 'wb') as token:
+                pickle.dump(creds, token)
+
+        try:
+            service = build('calendar', 'v3', credentials=creds)
+            return service
+        except Exception as e:
+            logger.error(f"Failed to build calendar service: {str(e)}")
+            return None
+
+    def get_calendar_events(self):
+        """Get today's calendar events with caching"""
+        current_time = time.time()
+        
+        # Return cached data if valid
+        if (self.calendar_cache is not None and 
+            self.last_calendar_update is not None and 
+            current_time - self.last_calendar_update < self.CALENDAR_UPDATE_INTERVAL):
+            return self.calendar_cache
+
+        try:
+            if not self.calendar_service:
+                return self.get_dummy_todos()
+
+            # Get the timezone from the system
+            timezone_str = subprocess.check_output(['date', '+%z']).decode().strip()
+            
+            # Calculate start and end of today in RFC3339 format
+            now = datetime.now()
+            start_of_day = datetime(now.year, now.month, now.day, 0, 0, 0)
+            end_of_day = start_of_day + timedelta(days=1, seconds=-1)
+            
+            # Add timezone to the timestamps
+            time_min = start_of_day.isoformat() + timezone_str[:3] + ':' + timezone_str[3:]
+            time_max = end_of_day.isoformat() + timezone_str[:3] + ':' + timezone_str[3:]
+
+            events_result = self.calendar_service.events().list(
+                calendarId='primary',
+                timeMin=time_min,
+                timeMax=time_max,
+                maxResults=10,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+            formatted_events = []
+
+            for event in events:
+                start = event['start'].get('dateTime', event['start'].get('date'))
+                if 'T' in start:  # This is a datetime
+                    event_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                    time_str = event_time.strftime("%I:%M %p")
+                    formatted_events.append({
+                        'time': time_str,
+                        'title': event['summary'],
+                        'type': self.determine_event_type(event)
+                    })
+                else:  # This is an all-day event
+                    formatted_events.append({
+                        'time': 'All Day',
+                        'title': event['summary'],
+                        'type': self.determine_event_type(event)
+                    })
+
+            self.calendar_cache = formatted_events
+            self.last_calendar_update = current_time
+            return formatted_events
+
+        except Exception as e:
+            logger.error(f"Failed to fetch calendar events: {str(e)}")
+            if self.calendar_cache is not None:
+                return self.calendar_cache
+            return self.get_dummy_todos()
+
+    def determine_event_type(self, event):
+        """Determine event type based on event details"""
+        title = event.get('summary', '').lower()
+        description = event.get('description', '').lower()
+        
+        if 'meeting' in title or 'call' in title or 'sync' in title:
+            return 'meeting'
+        elif 'appointment' in title or 'doctor' in title or 'dentist' in title:
+            return 'appointment'
+        elif 'deadline' in title or 'due' in title:
+            return 'deadline'
+        elif 'gym' in title or 'workout' in title or 'exercise' in title:
+            return 'exercise'
+        elif 'lunch' in title or 'dinner' in title or 'breakfast' in title:
+            return 'meal'
+        else:
+            return 'other'
+
+    # Replace your existing draw_todos method with this one
+    def draw_todos(self, image, draw):
+        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
+        
+        events = self.get_calendar_events()
+        y_offset = 130
+
+        for i, event in enumerate(events):
+            # Format the event text
+            event_text = f"{event['time']} - {event['title']}"
+            
+            # Draw the text
+            draw.text((40, y_offset), f"• {event_text}", font=self.font_small, fill=0)
+            
+            # Draw separator line
+            if i < len(events) - 1:
+                draw.line((40, y_offset + 25, self.width//2 - 20, y_offset + 25), 
+                         fill=0, width=1)
+            
+            y_offset += 35
 
     def get_weather(self):
         current_time = time.time()
@@ -150,51 +290,50 @@ class EventHub:
             return self.weather_cache
 
         try:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=imperial"
+            # Optimized API call:
+            # - exclude=current,minutely,hourly,alerts to only get daily data
+            # - units=imperial for Fahrenheit
+            url = f"https://api.openweathermap.org/data/3.0/onecall?lat={self.location['lat']}&lon={self.location['lon']}&exclude=current,minutely,hourly,alerts&units=imperial&appid={self.weather_api_key}"
+            
             response = requests.get(url)
             data = response.json()
             
             weather_data = []
-            if 'list' in data:
-                current_date = datetime.now().date()
-                days_processed = set()
+            if 'daily' in data:
+                # Get next 3 days
+                for day in data['daily'][:3]:
+                    weather_data.append({
+                        'date': datetime.fromtimestamp(day['dt']).date(),
+                        'temp_min': round(day['temp']['min']),
+                        'temp_max': round(day['temp']['max']),
+                        'description': day['weather'][0]['main']
+                    })
                 
-                for item in data['list']:
-                    forecast_date = datetime.fromtimestamp(item['dt']).date()
-                    if forecast_date > current_date and forecast_date not in days_processed and len(weather_data) < 3:
-                        weather_data.append({
-                            'date': forecast_date,
-                            'temp': round(item['main']['temp']),
-                            'temp_min': round(item['main']['temp_min']),
-                            'temp_max': round(item['main']['temp_max']),
-                            'description': item['weather'][0]['main']
-                        })
-                        days_processed.add(forecast_date)
-            
             self.weather_cache = weather_data
             self.last_weather_update = current_time
             
             return weather_data
-            
+                
         except Exception as e:
             logger.error(f"Weather API error: {str(e)}")
             if self.weather_cache is not None:
                 return self.weather_cache
             
+            # Dummy data in case of error
             return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
+                {'date': datetime.now().date() + timedelta(days=1), 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
+                {'date': datetime.now().date() + timedelta(days=2), 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
+                {'date': datetime.now().date() + timedelta(days=3), 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
             ]
 
-    def get_dummy_todos(self):
-        return [
-            "9:00 AM - Team standup meeting",
-            "11:30 AM - Dentist appointment",
-            "2:00 PM - Review project deadline",
-            "4:30 PM - Gym session",
-            "6:00 PM - Dinner with friends"
-        ]
+    # def get_dummy_todos(self):
+    #     return [
+    #         "9:00 AM - Team standup meeting",
+    #         "11:30 AM - Dentist appointment",
+    #         "2:00 PM - Review project deadline",
+    #         "4:30 PM - Gym session",
+    #         "6:00 PM - Dinner with friends"
+    #     ]
 
     def get_dummy_spotify(self):
         return {
@@ -245,7 +384,7 @@ class EventHub:
     def draw_weather(self, image, draw):
         weather_data = self.get_weather()
         draw.text((self.width//2 + 20, 90), f"Weather - {self.location['city']}", 
-                 font=self.font_medium, fill=0)
+                font=self.font_medium, fill=0)
         
         col_width = (self.width//2 - 40) // 3
         
@@ -258,8 +397,7 @@ class EventHub:
             
             # Date
             date_str = day['date'].strftime("%a\n%b %d")
-            date_bbox = draw.textbbox((0, 0), date_str, font=self.font_small)
-            date_w = date_bbox[2] - date_bbox[0]
+            date_w = self.font_small.getsize(date_str.split('\n')[0])[0]
             x_center = x_pos + (col_width - date_w) // 2
             draw.text((x_center, y_start), date_str, font=self.font_small, fill=0)
             
@@ -267,35 +405,33 @@ class EventHub:
             weather_icon = self.weather_icons.get(day['description'], 
                                                 self.weather_icons['default'])
             icon_pos = self.center_image(weather_icon, 
-                                       x_pos + col_width//2, 
-                                       y_start + 80)
+                                    x_pos + col_width//2, 
+                                    y_start + 80)
             image.paste(weather_icon, icon_pos)
             
-            # Temperature
+            # Temperature range
             temp_str = f"{day['temp_max']}°/{day['temp_min']}°"
-            temp_bbox = draw.textbbox((0, 0), temp_str, font=self.font_medium)
-            temp_w = temp_bbox[2] - temp_bbox[0]
+            temp_w = self.font_medium.getsize(temp_str)[0]
             x_center = x_pos + (col_width - temp_w) // 2
             draw.text((x_center, y_start + 120), temp_str, 
-                     font=self.font_medium, fill=0)
+                    font=self.font_medium, fill=0)
             
             # Description
-            desc_bbox = draw.textbbox((0, 0), day['description'], font=self.font_small)
-            desc_w = desc_bbox[2] - desc_bbox[0]
+            desc_w = self.font_small.getsize(day['description'])[0]
             x_center = x_pos + (col_width - desc_w) // 2
             draw.text((x_center, y_start + 150), day['description'], 
-                     font=self.font_small, fill=0)
+                    font=self.font_small, fill=0)
 
-    def draw_todos(self, image, draw):
-        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
+    # def draw_todos(self, image, draw):
+    #     draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
         
-        todos = self.get_dummy_todos()
-        for i, todo in enumerate(todos):
-            draw.text((40, 130 + i*35), f"• {todo}", font=self.font_small, fill=0)
+    #     todos = self.get_dummy_todos()
+    #     for i, todo in enumerate(todos):
+    #         draw.text((40, 130 + i*35), f"• {todo}", font=self.font_small, fill=0)
             
-            if i < len(todos) - 1:
-                draw.line((40, 130 + i*35 + 25, self.width//2 - 20, 
-                          130 + i*35 + 25), fill=0, width=1)
+    #         if i < len(todos) - 1:
+    #             draw.line((40, 130 + i*35 + 25, self.width//2 - 20, 
+    #                       130 + i*35 + 25), fill=0, width=1)
 
     def draw_spotify(self, image, draw):
         music_data = self.get_dummy_spotify()
