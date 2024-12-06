@@ -176,40 +176,41 @@ class EventHub:
             return self.weather_cache
 
         try:
-            # Optimized API call:
-            # - exclude=current,minutely,hourly,alerts to only get daily data
-            # - units=imperial for Fahrenheit
-            url = f"https://api.openweathermap.org/data/3.0/onecall?lat={self.location['lat']}&lon={self.location['lon']}&exclude=current,minutely,hourly,alerts&units=imperial&appid={self.weather_api_key}"
-            
+            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=imperial"
             response = requests.get(url)
             data = response.json()
-            print(data)
+            
             weather_data = []
-            if 'daily' in data:
-                # Get next 3 days
-                for day in data['daily'][:3]:
-                    weather_data.append({
-                        'date': datetime.fromtimestamp(day['dt']).date(),
-                        'temp_min': round(day['temp']['min']),
-                        'temp_max': round(day['temp']['max']),
-                        'description': day['weather'][0]['main']
-                    })
+            if 'list' in data:
+                current_date = datetime.now().date()
+                days_processed = set()
                 
+                for item in data['list']:
+                    forecast_date = datetime.fromtimestamp(item['dt']).date()
+                    if forecast_date > current_date and forecast_date not in days_processed and len(weather_data) < 3:
+                        weather_data.append({
+                            'date': forecast_date,
+                            'temp': round(item['main']['temp']),
+                            'temp_min': round(item['main']['temp_min']),
+                            'temp_max': round(item['main']['temp_max']),
+                            'description': item['weather'][0]['main']
+                        })
+                        days_processed.add(forecast_date)
+            
             self.weather_cache = weather_data
             self.last_weather_update = current_time
             
             return weather_data
-                
+            
         except Exception as e:
             logger.error(f"Weather API error: {str(e)}")
             if self.weather_cache is not None:
                 return self.weather_cache
             
-            # Dummy data in case of error
             return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
+                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
+                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
+                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
             ]
 
     def get_dummy_todos(self):
