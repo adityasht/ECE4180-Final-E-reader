@@ -1,5 +1,3 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
 import sys
 import os
 import logging
@@ -9,16 +7,11 @@ from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 import requests
 import subprocess
-import json
 import re
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-import pickle
+
 
 # Setup paths
-picdir = 'pic'  # Simplified path
+resources_dir = 'resources'  # Simplified path
 
 
 # Configure logging
@@ -32,9 +25,9 @@ class EventHub:
         self.height = self.epd.height  # 480
         
         # Initialize fonts
-        self.font_large = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 36)
-        self.font_medium = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 24)
-        self.font_small = ImageFont.truetype(os.path.join(picdir, 'Font.ttc'), 18)
+        self.font_large = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 36)
+        self.font_medium = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 24)
+        self.font_small = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 18)
         
         # Load and validate all required images
         self.load_images()
@@ -48,12 +41,6 @@ class EventHub:
         self.last_weather_update = None
         self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
 
-        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-        #self.calendar_service = self.setup_google_calendar()
-        # Initialize calendar cache
-        self.calendar_cache = None
-        self.last_calendar_update = None
-        self.CALENDAR_UPDATE_INTERVAL = 300  # Update every 5 minutes
 
     def load_images(self):
         """Load and validate all required bitmap images"""
@@ -92,7 +79,7 @@ class EventHub:
     def load_and_resize_image(self, filename, size):
         """Load a bitmap image and resize it to the specified size"""
         try:
-            path = os.path.join(picdir, filename)
+            path = os.path.join(resources_dir, filename)
             if not os.path.exists(path):
                 logger.error(f"Image file not found: {path}")
                 return self.create_default_image(size)
@@ -153,114 +140,8 @@ class EventHub:
                 'strength': 0
             }
         
-    def setup_google_calendar(self):
-        """Set up Google Calendar API service"""
-        creds = None
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
 
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'calender_credentials.json', self.SCOPES)
-                creds = flow.run_local_server(port=0)
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-
-        try:
-            service = build('calendar', 'v3', credentials=creds)
-            return service
-        except Exception as e:
-            logger.error(f"Failed to build calendar service: {str(e)}")
-            return None
-
-    def get_calendar_events(self):
-        """Get today's calendar events with caching"""
-        current_time = time.time()
-        
-        # Return cached data if valid
-        if (self.calendar_cache is not None and 
-            self.last_calendar_update is not None and 
-            current_time - self.last_calendar_update < self.CALENDAR_UPDATE_INTERVAL):
-            return self.calendar_cache
-
-        try:
-            if not self.calendar_service:
-                return self.get_dummy_todos()
-
-            # Get the timezone from the system
-            timezone_str = subprocess.check_output(['date', '+%z']).decode().strip()
-            
-            # Calculate start and end of today in RFC3339 format
-            now = datetime.now()
-            start_of_day = datetime(now.year, now.month, now.day, 0, 0, 0)
-            end_of_day = start_of_day + timedelta(days=1, seconds=-1)
-            
-            # Add timezone to the timestamps
-            time_min = start_of_day.isoformat() + timezone_str[:3] + ':' + timezone_str[3:]
-            time_max = end_of_day.isoformat() + timezone_str[:3] + ':' + timezone_str[3:]
-
-            events_result = self.calendar_service.events().list(
-                calendarId='primary',
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=10,
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
-
-            events = events_result.get('items', [])
-            formatted_events = []
-
-            for event in events:
-                start = event['start'].get('dateTime', event['start'].get('date'))
-                if 'T' in start:  # This is a datetime
-                    event_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
-                    time_str = event_time.strftime("%I:%M %p")
-                    formatted_events.append({
-                        'time': time_str,
-                        'title': event['summary'],
-                        'type': self.determine_event_type(event)
-                    })
-                else:  # This is an all-day event
-                    formatted_events.append({
-                        'time': 'All Day',
-                        'title': event['summary'],
-                        'type': self.determine_event_type(event)
-                    })
-
-            self.calendar_cache = formatted_events
-            self.last_calendar_update = current_time
-            return formatted_events
-
-        except Exception as e:
-            logger.error(f"Failed to fetch calendar events: {str(e)}")
-            if self.calendar_cache is not None:
-                return self.calendar_cache
-            return self.get_dummy_todos()
-
-    def determine_event_type(self, event):
-        """Determine event type based on event details"""
-        title = event.get('summary', '').lower()
-        description = event.get('description', '').lower()
-        
-        if 'meeting' in title or 'call' in title or 'sync' in title:
-            return 'meeting'
-        elif 'appointment' in title or 'doctor' in title or 'dentist' in title:
-            return 'appointment'
-        elif 'deadline' in title or 'due' in title:
-            return 'deadline'
-        elif 'gym' in title or 'workout' in title or 'exercise' in title:
-            return 'exercise'
-        elif 'lunch' in title or 'dinner' in title or 'breakfast' in title:
-            return 'meal'
-        else:
-            return 'other'
-
-    # Replace your existing draw_todos method with this one
+    # Calendar Todo Drawing
     def draw_todos(self, image, draw):
         draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
         
