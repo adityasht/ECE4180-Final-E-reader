@@ -383,7 +383,7 @@ class EventHub:
         button_x = box_left + 20
         button_y = spotify_box_top + 110
         
-        if music_data['is_playing']:
+        if music_data['status'] is 'Playing':
             image.paste(self.spotify_icons['play'], 
                       (button_x, button_y))
         else:
@@ -410,13 +410,13 @@ def main():
     try:
         hub = EventHub()
         last_update = time.time()
-        
+        hub.update_display()
         while True:
             if select.select([sys.stdin], [], [], 0.1)[0]:  # Check input with 0.1s timeout
                 command = input().strip()  # Get the command
                 
                 if command == 'toggle':
-                    hub.spotify.toggleplayback()
+                    hub.spotify.toggle_playback()
                     hub.update_display()
                     last_update = time.time()
                 # Add more commands here as needed
