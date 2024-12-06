@@ -422,7 +422,7 @@ class EventHub:
             draw.text((x_center, y_start + 150), day['description'], 
                     font=self.font_small, fill=0)
 
-    def draw_todos(self, image, draw):
+    def draw_dummy_todos(self, image, draw):
         draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
         
         todos = self.get_dummy_todos()
