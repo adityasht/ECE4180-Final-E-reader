@@ -8,7 +8,9 @@ import requests
 import subprocess
 import re
 import epd5in83_V2
-from CalendarAPI.CalendarAPI import *
+from CalendarAPI.CalendarAPI import CalendarAPI
+from SpotifyAPI.Spotify import SpotifyController
+import select
 
 
 
@@ -36,6 +38,7 @@ class EventHub:
 
         # Load and Intialize Calendar and Spotify APIs
         self.calendar = CalendarAPI()
+        self.spotify = SpotifyController()
         
         # OpenWeatherMap configuration
         self.weather_api_key = '67165e9a733df491e5ed1242fa0362fb'
@@ -46,6 +49,8 @@ class EventHub:
         self.last_weather_update = None
         self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
 
+
+    ######################################################### DATA LOADERS ########################################
 
     def load_images(self):
         """Load and validate all required bitmap images"""
@@ -144,7 +149,55 @@ class EventHub:
                 'ssid': 'WiFi Not Found',
                 'strength': 0
             }
+    
+    def get_weather(self):
+        current_time = time.time()
         
+        if (self.weather_cache is not None and 
+            self.last_weather_update is not None and 
+            current_time - self.last_weather_update < self.WEATHER_UPDATE_INTERVAL):
+            return self.weather_cache
+
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=imperial"
+            response = requests.get(url)
+            data = response.json()
+            
+            weather_data = []
+            if 'list' in data:
+                current_date = datetime.now().date()
+                days_processed = set()
+                
+                for item in data['list']:
+                    forecast_date = datetime.fromtimestamp(item['dt']).date()
+                    if forecast_date > current_date and forecast_date not in days_processed and len(weather_data) < 3:
+                        weather_data.append({
+                            'date': forecast_date,
+                            'temp': round(item['main']['temp']),
+                            'temp_min': round(item['main']['temp_min']),
+                            'temp_max': round(item['main']['temp_max']),
+                            'description': item['weather'][0]['main']
+                        })
+                        days_processed.add(forecast_date)
+            
+            self.weather_cache = weather_data
+            self.last_weather_update = current_time
+            
+            return weather_data
+            
+        except Exception as e:
+            logger.error(f"Weather API error: {str(e)}")
+            if self.weather_cache is not None:
+                return self.weather_cache
+            
+            return [
+                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
+                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
+                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
+            ]
+
+
+
 
     # Calendar Todo Drawing
     def draw_todos(self, image, draw):
@@ -158,7 +211,7 @@ class EventHub:
             event_text = f"{event['time']} - {event['title']}"
             
             # Draw the text
-            draw.text((40, y_offset), f"• {event_text}", font=self.font_small, fill=0)
+            draw.text((30, y_offset), f"• {event_text}", font=self.font_small, fill=0)
             
             # Draw separator line
             if i < len(events) - 1:
@@ -213,21 +266,13 @@ class EventHub:
                 {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
             ]
 
-    def get_dummy_todos(self):
-        return [
-            "9:00 AM - Team standup meeting",
-            "11:30 AM - Dentist appointment",
-            "2:00 PM - Review project deadline",
-            "4:30 PM - Gym session",
-            "6:00 PM - Dinner with friends"
-        ]
 
-    def get_dummy_spotify(self):
-        return {
-            "track": "Bohemian Rhapsody",
-            "artist": "Queen",
-            "is_playing": True
-        }
+    def get_spotify_track(self):
+        return self.spotify.get_formatted_track_info()
+
+
+
+    ############################################################### DRAW FUNCTIONS ##################################
 
     def draw_frame(self):
         image = Image.new('1', (self.width, self.height), 255)
@@ -309,19 +354,8 @@ class EventHub:
             draw.text((x_center, y_start + 150), day['description'], 
                     font=self.font_small, fill=0)
 
-    def draw_dummy_todos(self, image, draw):
-        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
-        
-        todos = self.get_dummy_todos()
-        for i, todo in enumerate(todos):
-            draw.text((40, 130 + i*35), f"• {todo}", font=self.font_small, fill=0)
-            
-            if i < len(todos) - 1:
-                draw.line((40, 130 + i*35 + 25, self.width//2 - 20, 
-                          130 + i*35 + 25), fill=0, width=1)
-
     def draw_spotify(self, image, draw):
-        music_data = self.get_dummy_spotify()
+        music_data = self.get_spotify_track()
         
         # Spotify section box
         spotify_box_top = 320
@@ -350,10 +384,10 @@ class EventHub:
         button_y = spotify_box_top + 110
         
         if music_data['is_playing']:
-            image.paste(self.spotify_icons['pause'], 
+            image.paste(self.spotify_icons['play'], 
                       (button_x, button_y))
         else:
-            image.paste(self.spotify_icons['play'], 
+            image.paste(self.spotify_icons['pause'], 
                       (button_x, button_y))
 
     def update_display(self):
@@ -375,10 +409,23 @@ class EventHub:
 def main():
     try:
         hub = EventHub()
+        last_update = time.time()
         
         while True:
-            hub.update_display()
-            time.sleep(60)
+            if select.select([sys.stdin], [], [], 0.1)[0]:  # Check input with 0.1s timeout
+                command = input().strip()  # Get the command
+                
+                if command == 'toggle':
+                    hub.spotify.toggleplayback()
+                    hub.update_display()
+                    last_update = time.time()
+                # Add more commands here as needed
+            
+            # Check if it's time for regular update
+            current_time = time.time()
+            if current_time - last_update >= 60:
+                hub.update_display()
+                last_update = current_time
             
     except KeyboardInterrupt:
         logging.info("Exiting gracefully...")
