@@ -1,13 +1,15 @@
 import sys
 import os
 import logging
-import epd5in83_V2
 import time
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 import requests
 import subprocess
 import re
+import epd5in83_V2
+from CalendarAPI.CalendarAPI import CalendarAPI
+
 
 
 # Setup paths
@@ -31,6 +33,9 @@ class EventHub:
         
         # Load and validate all required images
         self.load_images()
+
+        # Load and Intialize Calendar and Spotify APIs
+        self.calendar = CalendarAPI()
         
         # OpenWeatherMap configuration
         self.weather_api_key = '67165e9a733df491e5ed1242fa0362fb'
@@ -145,7 +150,7 @@ class EventHub:
     def draw_todos(self, image, draw):
         draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
         
-        events = self.get_calendar_events()
+        events = self.calendar.get_calendar_events()
         y_offset = 130
 
         for i, event in enumerate(events):
@@ -178,7 +183,7 @@ class EventHub:
             
             response = requests.get(url)
             data = response.json()
-            
+            print(data)
             weather_data = []
             if 'daily' in data:
                 # Get next 3 days
@@ -356,8 +361,8 @@ class EventHub:
             
             image, draw = self.draw_frame()
             self.draw_header(image, draw)
-            self.draw_dummy_todos(image, draw)
-             #self.draw_todos(image, draw)
+            #self.draw_dummy_todos(image, draw)
+            self.draw_todos(image, draw)
             self.draw_spotify(image, draw)
             self.draw_weather(image, draw)
             

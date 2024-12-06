@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class CalenderAPI:
+class CalendarAPI:
         
     def __init__(self):
         # Initialize API
@@ -36,7 +36,7 @@ class CalenderAPI:
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'CalenderAPI_creds.json', self.SCOPES)
+                    'CalendarAPI_creds.json', self.SCOPES)
                 creds = flow.run_local_server(port=0)
             with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
@@ -127,7 +127,7 @@ class CalenderAPI:
 
     # Replace your existing draw_todos method with this one
 if __name__ == "__main__":
-    API = CalenderAPI()
+    API = CalendarAPI()
     events = API.get_calendar_events()
     print(events)
         
