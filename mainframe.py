@@ -326,14 +326,14 @@ class EventHub:
                 {'date': datetime.now().date() + timedelta(days=3), 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
             ]
 
-    # def get_dummy_todos(self):
-    #     return [
-    #         "9:00 AM - Team standup meeting",
-    #         "11:30 AM - Dentist appointment",
-    #         "2:00 PM - Review project deadline",
-    #         "4:30 PM - Gym session",
-    #         "6:00 PM - Dinner with friends"
-    #     ]
+    def get_dummy_todos(self):
+        return [
+            "9:00 AM - Team standup meeting",
+            "11:30 AM - Dentist appointment",
+            "2:00 PM - Review project deadline",
+            "4:30 PM - Gym session",
+            "6:00 PM - Dinner with friends"
+        ]
 
     def get_dummy_spotify(self):
         return {
@@ -422,16 +422,16 @@ class EventHub:
             draw.text((x_center, y_start + 150), day['description'], 
                     font=self.font_small, fill=0)
 
-    # def draw_todos(self, image, draw):
-    #     draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
+    def draw_todos(self, image, draw):
+        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
         
-    #     todos = self.get_dummy_todos()
-    #     for i, todo in enumerate(todos):
-    #         draw.text((40, 130 + i*35), f"• {todo}", font=self.font_small, fill=0)
+        todos = self.get_dummy_todos()
+        for i, todo in enumerate(todos):
+            draw.text((40, 130 + i*35), f"• {todo}", font=self.font_small, fill=0)
             
-    #         if i < len(todos) - 1:
-    #             draw.line((40, 130 + i*35 + 25, self.width//2 - 20, 
-    #                       130 + i*35 + 25), fill=0, width=1)
+            if i < len(todos) - 1:
+                draw.line((40, 130 + i*35 + 25, self.width//2 - 20, 
+                          130 + i*35 + 25), fill=0, width=1)
 
     def draw_spotify(self, image, draw):
         music_data = self.get_dummy_spotify()
@@ -475,6 +475,7 @@ class EventHub:
             
             image, draw = self.draw_frame()
             self.draw_header(image, draw)
+            self.draw_dummy_todos(image, draw)
              #self.draw_todos(image, draw)
             self.draw_spotify(image, draw)
             self.draw_weather(image, draw)
