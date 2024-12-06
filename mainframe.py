@@ -8,7 +8,7 @@ import requests
 import subprocess
 import re
 import epd5in83_V2
-from CalendarAPI.CalendarAPI import CalendarAPI
+from CalendarAPI.CalendarAPI import *
 
 
 
