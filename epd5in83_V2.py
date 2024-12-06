@@ -1,11 +1,11 @@
 # *****************************************************************************
-# * | File        :	  epd5in83.py
+# * | File        :	  epd5in83_V2.py
 # * | Author      :   Waveshare team
 # * | Function    :   Electronic paper driver
 # * | Info        :
 # *----------------
-# * | This version:   V4.0
-# * | Date        :   2019-06-20
+# * | This version:   V1.1
+# * | Date        :   2022-08-10
 # # | Info        :   python demo
 # -----------------------------------------------------------------------------
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,13 +27,12 @@
 # THE SOFTWARE.
 #
 
-
 import logging
 from . import epdconfig
 
 # Display resolution
-EPD_WIDTH       = 600
-EPD_HEIGHT      = 448
+EPD_WIDTH       = 648
+EPD_HEIGHT      = 480
 
 logger = logging.getLogger(__name__)
 
@@ -66,129 +65,103 @@ class EPD:
         epdconfig.digital_write(self.cs_pin, 0)
         epdconfig.spi_writebyte([data])
         epdconfig.digital_write(self.cs_pin, 1)
+
+    # send a lot of data   
+    def send_data2(self, data):
+        epdconfig.digital_write(self.dc_pin, 1)
+        epdconfig.digital_write(self.cs_pin, 0)
+        epdconfig.spi_writebyte2(data)
+        epdconfig.digital_write(self.cs_pin, 1)
         
     def ReadBusy(self):
         logger.debug("e-Paper busy")
-        while(epdconfig.digital_read(self.busy_pin) == 0):      # 0: idle, 1: busy
-            epdconfig.delay_ms(100)    
+        while(epdconfig.digital_read(self.busy_pin) == 0):      
+            epdconfig.delay_ms(20)    
         logger.debug("e-Paper busy release")
         
+    def TurnOnDisplay(self):
+        self.send_command(0x12);    #POWER ON
+        epdconfig.delay_ms(100)   
+        self.ReadBusy();  
+    
     def init(self):
         if (epdconfig.module_init() != 0):
             return -1
         # EPD hardware init start
         self.reset()
         
-        self.send_command(0x01) # POWER_SETTING
-        self.send_data(0x37)
-        self.send_data(0x00)
-        
-        self.send_command(0x00) # PANEL_SETTING
-        self.send_data(0xCF)
-        self.send_data(0x08)
-        
-        self.send_command(0x06) # BOOSTER_SOFT_START
-        self.send_data(0xc7)
-        self.send_data(0xcc)
-        self.send_data(0x28)
-        
-        self.send_command(0x04) # POWER_ON
-        self.ReadBusy()
-        
-        self.send_command(0x30) # PLL_CONTROL
-        self.send_data(0x3c)
-        
-        self.send_command(0x41) # TEMPERATURE_CALIBRATION
-        self.send_data(0x00)
-        
-        self.send_command(0x50) # VCOM_AND_DATA_INTERVAL_SETTING
-        self.send_data(0x77)
-        
-        self.send_command(0x60) # TCON_SETTING
+        self.send_command(0x01)    #POWER SETTING
+        self.send_data (0x07)
+        self.send_data (0x07)  #VGH=20V,VGL=-20V
+        self.send_data (0x3f)  #VDH=15V
+        self.send_data (0x3f)  #VDL=-15V
+
+        self.send_command(0x04)    #POWER ON
+        epdconfig.delay_ms(100) 
+        self.ReadBusy()   #waiting for the electronic paper IC to release the idle signal
+
+        self.send_command(0X00)    #PANNEL SETTING
+        self.send_data(0x1F)   #KW-3f   KWR-2F	BWROTP 0f	BWOTP 1f
+
+        self.send_command(0x61)    #tres
+        self.send_data (0x02)		#source 648
+        self.send_data (0x88)
+        self.send_data (0x01)		#gate 480
+        self.send_data (0xE0)
+
+        self.send_command(0X15)		
+        self.send_data(0x00)		
+
+        self.send_command(0X50)			#VCOM AND DATA INTERVAL SETTING
+        self.send_data(0x10)
+        self.send_data(0x07)
+
+        self.send_command(0X60)			#TCON SETTING
         self.send_data(0x22)
-        
-        self.send_command(0x61) # TCON_RESOLUTION
-        self.send_data(0x02) # source 600
-        self.send_data(0x58)
-        self.send_data(0x01) # gate 448
-        self.send_data(0xC0)
-        
-        self.send_command(0x82) # VCM_DC_SETTING
-        self.send_data(0x1E) # decide by LUT file
-        
-        self.send_command(0xe5) # FLASH MODE
-        self.send_data(0x03)
-        
+            
         # EPD hardware init end
         return 0
 
     def getbuffer(self, image):
-        buf = [0x00] * int(self.width * self.height / 4)
+        # logger.debug("bufsiz = ",int(self.width/8) * self.height)
+        buf = [0xFF] * (int(self.width/8) * self.height)
         image_monocolor = image.convert('1')
         imwidth, imheight = image_monocolor.size
         pixels = image_monocolor.load()
-        logger.debug('imwidth = %d  imheight =  %d ',imwidth, imheight)
+        # logger.debug("imwidth = %d, imheight = %d",imwidth,imheight)
         if(imwidth == self.width and imheight == self.height):
+            logger.debug("Vertical")
             for y in range(imheight):
                 for x in range(imwidth):
                     # Set the bits for the column of pixels at the current position.
-                    if pixels[x, y] < 64:           # black
-                        buf[int((x + y * self.width) / 4)] &= ~(0xC0 >> (x % 4 * 2))
-                    elif pixels[x, y] < 192:     # convert gray to red
-                        buf[int((x + y * self.width) / 4)] &= ~(0xC0 >> (x % 4 * 2))
-                        buf[int((x + y * self.width) / 4)] |= 0x40 >> (x % 4 * 2)
-                    else:                           # white
-                        buf[int((x + y * self.width) / 4)] |= 0xC0 >> (x % 4 * 2)
+                    if pixels[x, y] == 0:
+                        buf[int((x + y * self.width) / 8)] &= ~(0x80 >> (x % 8))
         elif(imwidth == self.height and imheight == self.width):
+            logger.debug("Horizontal")
             for y in range(imheight):
                 for x in range(imwidth):
                     newx = y
-                    newy = self.height - x - 1                    
-                    if pixels[x, y] < 64:           # black
-                        buf[int((newx + newy*self.width) / 4)] &= ~(0xC0 >> (y % 4 * 2))
-                    elif pixels[x, y] < 192:     # convert gray to red
-                        buf[int((newx + newy*self.width) / 4)] &= ~(0xC0 >> (y % 4 * 2))
-                        buf[int((newx + newy*self.width) / 4)] |= 0x40 >> (y % 4 * 2)
-                    else:                           # white
-                        buf[int((newx + newy*self.width) / 4)] |= 0xC0 >> (y % 4 * 2)
+                    newy = self.height - x - 1
+                    if pixels[x, y] == 0:
+                        buf[int((newx + newy*self.width) / 8)] &= ~(0x80 >> (y % 8))
         return buf
-
+        
     def display(self, image):
+        buf = [0x00] * int(self.width * self.height / 8)
+        for i in range(0, int(self.width * self.height / 8)):
+            buf[i] = ~image[i]
         self.send_command(0x10)
-        for i in range(0, int(self.width / 4 * self.height)):
-            temp1 = image[i]
-            j = 0
-            while (j < 4):
-                if ((temp1 & 0xC0) == 0xC0):
-                    temp2 = 0x03
-                elif ((temp1 & 0xC0) == 0x00):
-                    temp2 = 0x00
-                else:
-                    temp2 = 0x04
-                temp2 = (temp2 << 4) & 0xFF
-                temp1 = (temp1 << 2) & 0xFF
-                j += 1
-                if((temp1 & 0xC0) == 0xC0):
-                    temp2 |= 0x03
-                elif ((temp1 & 0xC0) == 0x00):
-                    temp2 |= 0x00
-                else:
-                    temp2 |= 0x04
-                temp1 = (temp1 << 2) & 0xFF
-                self.send_data(temp2)
-                j += 1
-                
-        self.send_command(0x12)
-        epdconfig.delay_ms(100)
-        self.ReadBusy()
+        self.send_data2([0x00] * int(self.width * self.height / 8))
+        self.send_command(0x13)
+        self.send_data2(buf)
+        self.TurnOnDisplay()
         
     def Clear(self):
         self.send_command(0x10)
-        for i in range(0, int(self.width / 4 * self.height)):
-            for j in range(0, 4):
-                self.send_data(0x33)
-        self.send_command(0x12)
-        self.ReadBusy()
+        self.send_data2([0x00] * int(self.width * self.height / 8))
+        self.send_command(0x13)
+        self.send_data2([0x00] * int(self.width * self.height / 8))
+        self.TurnOnDisplay()
 
     def sleep(self):
         self.send_command(0x02) # POWER_OFF
