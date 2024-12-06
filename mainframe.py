@@ -475,7 +475,7 @@ class EventHub:
             
             image, draw = self.draw_frame()
             self.draw_header(image, draw)
-            self.draw_todos(image, draw)
+             #self.draw_todos(image, draw)
             self.draw_spotify(image, draw)
             self.draw_weather(image, draw)
             
