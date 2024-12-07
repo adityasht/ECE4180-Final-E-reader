@@ -120,7 +120,7 @@ class EventHub:
                 'lon': data['longitude'],
                 'city': data['city']
             }
-        except:
+        except Exception as e:
             return {'lat': 40.7128, 'lon': -74.0060, 'city': 'New York'}
 
     def get_wifi_info(self):
@@ -139,7 +139,8 @@ class EventHub:
                 'ssid': ssid,
                 'strength': signal_percent
             }
-        except:
+        except Exception as e:
+            logger.error(f'wifi error {e}')
             return {
                 'ssid': 'WiFi Not Found',
                 'strength': 0
@@ -234,7 +235,7 @@ class EventHub:
         # Draw current conditions
         draw.text((x_start, y_start), "Now:", font=self.font_medium, fill=0)
         temp_width = self.get_text_dimensions(current_temp, self.font_large)[0]
-        draw.text((x_start + 100, y_start), current_temp, font=self.font_large, fill=0)
+        draw.text((x_start + 80, y_start), current_temp, font=self.font_large, fill=0)
         
         # Add precipitation with drop icon
         image.paste(self.weather_icons['drop'], (x_start + 100 + temp_width + 20, y_start + 5))
@@ -280,7 +281,7 @@ class EventHub:
                                                 self.weather_icons['default'])
             icon_pos = self.center_image(weather_icon, 
                                     x_pos + col_width//2, 
-                                    y_start + 60)
+                                    y_start + 70)
             image.paste(weather_icon, icon_pos)
             
             # Temperature range
@@ -292,8 +293,7 @@ class EventHub:
             
             # Precipitation chance with drop icon
             precip_icon_pos = (x_center - 25, y_start + 120)
-            image.paste(self.weather_icons['drop'], precip_icon_pos)
-            draw.text((x_center + 15, y_start + 120), 
+            draw.text((x_center + 15, y_start + 125), 
                     f"{day['precipitation']}%", font=self.font_small, fill=0)
 
     def draw_spotify(self, image, draw):
