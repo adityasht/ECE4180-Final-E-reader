@@ -47,8 +47,9 @@ def handle_exit(hub, signal_received=None):
 def main():
     hub = None
     try:
-        # Initialize EventHub
+        # Initialize EventHub and EReader
         hub = EventHub()
+        print(hub.epd)
         reader = EReader(hub.epd, resources_dir)
         current_mode = 'hub'
         last_update = time.time()
