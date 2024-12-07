@@ -1,8 +1,10 @@
+
+
 import sys
 import os
 import logging
 import time
-import select
+from gpiozero import Button
 from resources import epd5in83_V2
 from EventHub import EventHub
 from EReader import EReader
@@ -14,6 +16,32 @@ logger = logging.getLogger(__name__)
 # Setup paths
 resources_dir = 'resources'  # Simplified path
 
+# GPIO Button Setup
+LEFT_PIN = 5
+TOGGLE_PIN = 6
+RIGHT_PIN = 13
+MODE_PIN = 16
+
+class ButtonController:
+    def __init__(self):
+        # Initialize buttons with pull_up=True (internal pull-up resistor)
+        self.left_button = Button(LEFT_PIN, pull_up=True, bounce_time=0.1)
+        self.toggle_button = Button(TOGGLE_PIN, pull_up=True, bounce_time=0.1)
+        self.right_button = Button(RIGHT_PIN, pull_up=True, bounce_time=0.1)
+        self.mode_button = Button(MODE_PIN, pull_up=True, bounce_time=0.1)
+        
+        # State tracking
+        self.last_press_time = 0
+        self.debounce_time = 0.3  # 300ms debounce
+        
+    def check_debounce(self):
+        """Check if enough time has passed since last button press"""
+        current_time = time.time()
+        if current_time - self.last_press_time >= self.debounce_time:
+            self.last_press_time = current_time
+            return True
+        return False
+
 def cleanup_display(epd):
     """Safely clean up the e-paper display"""
     try:
@@ -24,7 +52,6 @@ def cleanup_display(epd):
         epd5in83_V2.epdconfig.module_exit(cleanup=True)
     except Exception as e:
         logger.error(f"Error during display cleanup: {e}")
-        # Try one more time to exit the module
         try:
             epd5in83_V2.epdconfig.module_exit(cleanup=True)
         except:
@@ -47,9 +74,10 @@ def handle_exit(hub, signal_received=None):
 def main():
     hub = None
     try:
-        # Initialize EventHub and EReader
+        # Initialize components
         hub = EventHub()
         reader = EReader(hub.epd, resources_dir)
+        buttons = ButtonController()
         current_mode = 'hub'
         last_update = time.time()
         
@@ -57,60 +85,62 @@ def main():
         hub.update_display()
         logger.info("System initialized successfully")
         
+        # Button callbacks
+        def handle_mode_switch():
+            nonlocal current_mode
+            if buttons.check_debounce():
+                if current_mode == 'hub':
+                    current_mode = 'reader'
+                    reader.update_display()
+                else:
+                    current_mode = 'hub'
+                    hub.update_display()
+        
+        def handle_button_press(button_type):
+            if not buttons.check_debounce():
+                return
+                
+            if current_mode == 'hub':
+                if button_type == 'left':
+                    hub.spotify.skip_previous()
+                elif button_type == 'toggle':
+                    hub.spotify.toggle_playback()
+                elif button_type == 'right':
+                    hub.spotify.skip_next()
+                hub.update_display()
+            else:  # reader mode
+                if button_type == 'left':
+                    reader.handle_command('left')
+                elif button_type == 'toggle':
+                    reader.handle_command('select')
+                elif button_type == 'right':
+                    reader.handle_command('right')
+                reader.update_display()
+        
+        # Set up button callbacks
+        buttons.mode_button.when_pressed = handle_mode_switch
+        buttons.left_button.when_pressed = lambda: handle_button_press('left')
+        buttons.toggle_button.when_pressed = lambda: handle_button_press('toggle')
+        buttons.right_button.when_pressed = lambda: handle_button_press('right')
+        
+        # Main loop
         while True:
             try:
-                if select.select([sys.stdin], [], [], 0.1)[0]:  # Check input with 0.1s timeout
-                    command = input().strip()  # Get the command
-                    
-                    # Handle exit command
-                    if command.lower() in ['exit', 'quit']:
-                        logger.info("Exit command received")
-                        handle_exit(hub)
-                    
-                    # Mode switching
-                    if command == 'reader' and current_mode == 'hub':
-                        current_mode = 'reader'
-                        reader.update_display()
-                        continue
-                    elif command == 'hub' and current_mode == 'reader':
-                        current_mode = 'hub'
-                        hub.update_display()
-                        continue
-                    
-                    # Mode-specific commands
-                    if current_mode == 'hub':
-                        if command == 'toggle':
-                            hub.spotify.toggle_playback()
-                            hub.update_display()
-                            last_update = time.time()
-                        elif command == 'prev_track':
-                            hub.spotify.skip_previous()
-                            hub.update_display()
-                            last_update = time.time()
-                        elif command == 'next_track':
-                            hub.spotify.skip_next()
-                            hub.update_display()
-                            last_update = time.time()
-                    elif current_mode == 'reader':
-                        reader.handle_command(command)
-                        reader.update_display()
-                
                 # Regular update check (hub mode only)
                 if current_mode == 'hub':
                     current_time = time.time()
                     if current_time - last_update >= 60:
                         hub.update_display()
                         last_update = current_time
-                        
-            except EOFError:
-                logger.info("EOF received, initiating shutdown")
-                handle_exit(hub)
+                
+                # Small delay to prevent CPU hogging
+                time.sleep(0.1)
+                
             except KeyboardInterrupt:
                 logger.info("KeyboardInterrupt received, initiating shutdown")
                 handle_exit(hub)
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                # Only exit if it's a serious error
                 if "device" in str(e).lower() or "display" in str(e).lower():
                     raise
                 
@@ -125,7 +155,6 @@ def main():
         if hub:
             handle_exit(hub)
         else:
-            # If we couldn't initialize hub, try basic cleanup
             try:
                 epd = epd5in83_V2.EPD()
                 cleanup_display(epd)
