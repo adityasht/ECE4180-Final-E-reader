@@ -285,38 +285,55 @@ class EReader:
     def load_book(self, book_name):
         """Load and paginate book content"""
         try:
-            with open(os.path.join(self.books_dir, book_name), 'r', encoding='utf-8') as file:
-                content = file.read()
-                
-            # Calculate characters per line and lines per page
-            char_width = self.font_medium.getsize('x')[0]  # Average character width
-            chars_per_line = (self.width - 60) // char_width  # Leave margins
-            lines_per_page = (self.height - 80) // (self.font_medium.getsize('x')[1] + 5)  # Leave margins
-            
-            # Wrap text into lines
-            wrapped_lines = []
-            for paragraph in content.split('\n\n'):
-                wrapped_lines.extend(textwrap.fill(paragraph, width=chars_per_line).split('\n'))
-                wrapped_lines.append('')  # Add space between paragraphs
-            
-            # Split lines into pages
+            file_path = os.path.join(self.books_dir, book_name)
+            content = self.read_book_content(file_path)
+            if content is None:
+                return False
+
+            # Calculate layout parameters
+            char_width = self.font_medium.getsize('x')[0]
+            chars_per_line = (self.width - 60) // char_width  # 30px margins on each side
+
+            # Adjusted vertical space calculation
+            top_margin = 80  # Space for header
+            bottom_margin = 35  # Increased from 30
+            line_height = self.font_medium.getsize('x')[1] + 5  # Height of line plus spacing
+            lines_per_page = (self.height - top_margin - bottom_margin) // line_height
+
+            # Split content into pages
             self.book_content = []
             current_page = []
-            
-            for line in wrapped_lines:
-                if len(current_page) >= lines_per_page:
-                    self.book_content.append('\n'.join(current_page))
-                    current_page = []
-                current_page.append(line)
-            
+            current_lines = 0
+
+            # Split content into paragraphs
+            paragraphs = content.split('\n\n')
+
+            for paragraph in paragraphs:
+                # Wrap the paragraph text
+                wrapped_lines = textwrap.fill(paragraph.strip(), width=chars_per_line).split('\n')
+
+                # Check if we need to start a new page
+                if current_lines + len(wrapped_lines) + 1 > lines_per_page:
+                    if current_page:
+                        self.book_content.append('\n'.join(current_page))
+                    current_page = wrapped_lines
+                    current_lines = len(wrapped_lines)
+                else:
+                    if current_page:
+                        current_page.append('')  # Add space between paragraphs
+                        current_lines += 1
+                    current_page.extend(wrapped_lines)
+                    current_lines += len(wrapped_lines)
+
+            # Add the last page if it has content
             if current_page:
                 self.book_content.append('\n'.join(current_page))
-            
+
             self.current_book = book_name
             self.current_page = 0
             self.in_book = True
             return True
-            
+
         except Exception as e:
             print(f"Error loading book: {e}")
             return False
@@ -413,3 +430,11 @@ class EReader:
             self.epd.display(self.epd.getbuffer(image))
         except Exception as e:
             print(f"Error updating display: {e}")
+
+    def cleanup(self):
+        """Clean up resources when exiting reader mode"""
+        self.current_book = None
+        self.book_content = []
+        self.current_page = 0
+        self.in_book = False
+        gc.collect()  

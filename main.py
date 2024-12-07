@@ -1,11 +1,11 @@
-
-
 import sys
 import os
 import logging
 import time
+import gc
+import threading
 from gpiozero import Button
-from resources import epd5in83_V2
+import threading
 from EventHub import EventHub
 from EReader import EReader
 
@@ -24,147 +24,155 @@ MODE_PIN = 16
 
 class ButtonController:
     def __init__(self):
-        # Initialize buttons with pull_up=True (internal pull-up resistor)
         self.left_button = Button(LEFT_PIN, pull_up=True, bounce_time=0.1)
         self.toggle_button = Button(TOGGLE_PIN, pull_up=True, bounce_time=0.1)
         self.right_button = Button(RIGHT_PIN, pull_up=True, bounce_time=0.1)
         self.mode_button = Button(MODE_PIN, pull_up=True, bounce_time=0.1)
         
-        # State tracking
         self.last_press_time = 0
-        self.debounce_time = 0.3  # 300ms debounce
+        self.debounce_time = 0.5
+        self.update_lock = threading.Lock()
         
     def check_debounce(self):
-        """Check if enough time has passed since last button press"""
         current_time = time.time()
         if current_time - self.last_press_time >= self.debounce_time:
             self.last_press_time = current_time
             return True
         return False
 
-def cleanup_display(epd):
-    """Safely clean up the e-paper display"""
+def reinitialize_display(epd):
+    """Reinitialize the e-paper display"""
     try:
-        logger.info("Cleaning up display...")
         epd.init()
         epd.Clear()
-        epd.sleep()
-        epd5in83_V2.epdconfig.module_exit(cleanup=True)
+        time.sleep(0.1)  # Give the display time to settle
     except Exception as e:
-        logger.error(f"Error during display cleanup: {e}")
-        try:
-            epd5in83_V2.epdconfig.module_exit(cleanup=True)
-        except:
-            pass
+        logger.error(f"Error reinitializing display: {e}")
+        raise
 
-def handle_exit(hub, signal_received=None):
-    """Handle graceful exit with proper cleanup"""
-    if signal_received:
-        logger.info(f"Received signal: {signal_received}")
-    logger.info("Initiating graceful shutdown...")
+def safe_mode_switch(buttons, current_mode, hub, reader):
+    """Safely handle mode switching with proper cleanup"""
+    if not buttons.update_lock.acquire(blocking=False):
+        return current_mode
     
     try:
-        cleanup_display(hub.epd)
-        logger.info("Shutdown completed successfully")
+        if current_mode == 'hub':
+            # Switching to reader mode
+            gc.collect()
+            reinitialize_display(hub.epd)
+            reader.update_display()
+            return 'reader'
+        else:
+            # Switching to hub mode
+            reader.cleanup()  # Add this method to EReader class
+            gc.collect()
+            reinitialize_display(hub.epd)
+            hub.update_display()
+            return 'hub'
     except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
+        logger.error(f"Error during mode switch: {e}")
+        return current_mode
     finally:
-        sys.exit(0)
+        buttons.update_lock.release()
+        gc.collect()
+
+def safe_update_display(buttons, display_func):
+    """Safely update display with lock and memory management"""
+    if buttons.update_lock.acquire(blocking=False):
+        try:
+            display_func()
+            gc.collect()
+        finally:
+            buttons.update_lock.release()
 
 def main():
     hub = None
     try:
-        # Initialize components
         hub = EventHub()
         reader = EReader(hub.epd, resources_dir)
         buttons = ButtonController()
         current_mode = 'hub'
         last_update = time.time()
         
-        # Initial display update
         hub.update_display()
+        gc.collect()
         logger.info("System initialized successfully")
         
-        # Button callbacks
         def handle_mode_switch():
             nonlocal current_mode
             if buttons.check_debounce():
-                if current_mode == 'hub':
-                    current_mode = 'reader'
-                    reader.update_display()
-                else:
-                    current_mode = 'hub'
-                    hub.update_display()
+                new_mode = safe_mode_switch(buttons, current_mode, hub, reader)
+                if new_mode != current_mode:
+                    logger.info(f"Mode switched from {current_mode} to {new_mode}")
+                    current_mode = new_mode
         
         def handle_button_press(button_type):
             if not buttons.check_debounce():
                 return
                 
-            if current_mode == 'hub':
-                if button_type == 'left':
-                    hub.spotify.skip_previous()
-                elif button_type == 'toggle':
-                    hub.spotify.toggle_playback()
-                elif button_type == 'right':
-                    hub.spotify.skip_next()
-                hub.update_display()
-            else:  # reader mode
-                if button_type == 'left':
-                    reader.handle_command('left')
-                elif button_type == 'toggle':
-                    reader.handle_command('select')
-                elif button_type == 'right':
-                    reader.handle_command('right')
-                reader.update_display()
+            try:
+                if current_mode == 'hub':
+                    if button_type == 'left':
+                        hub.spotify.skip_previous()
+                    elif button_type == 'toggle':
+                        hub.spotify.toggle_playback()
+                    elif button_type == 'right':
+                        hub.spotify.skip_next()
+                    safe_update_display(buttons, hub.update_display)
+                else:  # reader mode
+                    if button_type == 'left':
+                        reader.handle_command('left')
+                    elif button_type == 'toggle':
+                        reader.handle_command('select')
+                    elif button_type == 'right':
+                        reader.handle_command('right')
+                    safe_update_display(buttons, reader.update_display)
+            except Exception as e:
+                logger.error(f"Error handling button press: {e}")
         
-        # Set up button callbacks
         buttons.mode_button.when_pressed = handle_mode_switch
         buttons.left_button.when_pressed = lambda: handle_button_press('left')
         buttons.toggle_button.when_pressed = lambda: handle_button_press('toggle')
         buttons.right_button.when_pressed = lambda: handle_button_press('right')
         
-        # Main loop
         while True:
             try:
-                # Regular update check (hub mode only)
                 if current_mode == 'hub':
                     current_time = time.time()
                     if current_time - last_update >= 60:
-                        hub.update_display()
+                        safe_update_display(buttons, hub.update_display)
                         last_update = current_time
                 
-                # Small delay to prevent CPU hogging
                 time.sleep(0.1)
                 
+                # Periodic cleanup
+                if time.time() % 60 < 0.1:  # Every minute
+                    gc.collect()
+                
             except KeyboardInterrupt:
-                logger.info("KeyboardInterrupt received, initiating shutdown")
-                handle_exit(hub)
+                raise
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 if "device" in str(e).lower() or "display" in str(e).lower():
                     raise
                 
     except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt received during initialization")
+        logger.info("Shutting down...")
         if hub:
-            handle_exit(hub)
-        else:
-            sys.exit(1)
+            hub.epd.init()
+            hub.epd.Clear()
+            hub.epd.sleep()
+        sys.exit(0)
     except Exception as e:
         logger.error(f"Critical error: {e}")
         if hub:
-            handle_exit(hub)
-        else:
             try:
-                epd = epd5in83_V2.EPD()
-                cleanup_display(epd)
+                hub.epd.init()
+                hub.epd.Clear()
+                hub.epd.sleep()
             except:
                 pass
-            sys.exit(1)
+        sys.exit(1)
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logger.critical(f"Fatal error: {e}")
-        sys.exit(1)
+    main()
