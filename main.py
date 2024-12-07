@@ -63,7 +63,9 @@ class EventHub:
                 'Thunderstorm': self.load_and_resize_image('thunder.bmp', (48, 48)),
                 'Drizzle': self.load_and_resize_image('rain.bmp', (48, 48)),
                 'Mist': self.load_and_resize_image('mist.bmp', (48, 48)),
-                'default': self.load_and_resize_image('default_weather.bmp', (48, 48))
+                'default': self.load_and_resize_image('default_weather.bmp', (48, 48)),
+                'sunrise': self.load_and_resize_image('sunrise.bmp', (48, 48)),
+                'sunset': self.load_and_resize_image('sunset.bmp', (48, 48))
             }
             
             # WiFi icons (32x32 recommended)
