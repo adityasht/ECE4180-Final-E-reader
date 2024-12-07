@@ -37,6 +37,8 @@ class EventHub:
         self.spotify = SpotifyController()
         self.weather = WeatherData(self.location)
 
+    ####################################################### DATA LOADERS
+
     def load_images(self):
         """Load and validate all required bitmap images"""
         try:
@@ -142,6 +144,11 @@ class EventHub:
                 'ssid': 'WiFi Not Found',
                 'strength': 0
             }
+        
+    def get_spotify_track(self):
+        return self.spotify.get_formatted_track_info()
+        
+    #################################################################### DRAWING FUNCS#################
 
     def draw_frame(self):
         image = Image.new('1', (self.width, self.height), 255)
