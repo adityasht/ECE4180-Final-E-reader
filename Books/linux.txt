@@ -1,0 +1,26 @@
+sudo nano /etc/systemd/system/eink-display.service
+
+[Unit]
+Description=E-Ink Display Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/adityasht/ECE4180-Final-E-reader/main.py
+WorkingDirectory=/home/adityasht/ECE4180-Final-E-reader
+User=adityasht
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/adityasht/eink-display.log
+StandardError=append:/home/adityasht/eink-display.error.log
+
+[Install]
+WantedBy=multi-user.target
+
+touch ~/eink-display.log
+touch ~/eink-display.error.log
+chmod 666 ~/eink-display.log
+chmod 666 ~/eink-display.error.log
+
+sudo chmod 644 /etc/systemd/system/eink-display.service
+
+sudo systemctl status eink-display.service

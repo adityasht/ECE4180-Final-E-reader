@@ -1,12 +1,8 @@
-import os
-from PIL import Image, ImageDraw, ImageFont
-import textwrap
-import markdown
-import epub
-import PyPDF2
-import html2text
-import re
 
+
+import markdown
+import re
+import gc
 import os
 from PIL import Image, ImageDraw, ImageFont
 import textwrap

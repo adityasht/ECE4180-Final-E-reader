@@ -14,7 +14,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Setup paths
-resources_dir = 'resources'  # Simplified path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+resources_dir = os.path.join(BASE_DIR, 'resources')
 
 # GPIO Button Setup
 LEFT_PIN = 5
