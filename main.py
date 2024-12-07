@@ -7,9 +7,11 @@ from datetime import datetime, timedelta
 import requests
 import subprocess
 import re
-from resources import epd5in83_V2, epdconfig
+import select
+from resources import epd5in83_V2
 from GoogleCalendarAPI.Calendar import CalendarAPI
 from SpotifyAPI.Spotify import SpotifyController
+from OpenWeatherAPI.Weather import WeatherData
 import select
 
 
@@ -38,18 +40,13 @@ class EventHub:
         # Load and validate all required images
         self.load_images()
 
+        # Initialize Location based on Wifi Connection
+        self.location = self.get_location()
+
         # Load and Intialize Calendar and Spotify APIs
         self.calendar = CalendarAPI()
         self.spotify = SpotifyController()
-        
-        # OpenWeatherMap configuration
-        self.weather_api_key = '67165e9a733df491e5ed1242fa0362fb'
-        self.location = self.get_location()
-        
-        # Initialize cache
-        self.weather_cache = None
-        self.last_weather_update = None
-        self.WEATHER_UPDATE_INTERVAL = 3600  # Update weather every hour
+        self.weather = WeatherData(self.location)
 
 
     ######################################################### DATA LOADERS ########################################
@@ -151,121 +148,6 @@ class EventHub:
                 'ssid': 'WiFi Not Found',
                 'strength': 0
             }
-    
-    def get_weather(self):
-        current_time = time.time()
-        
-        if (self.weather_cache is not None and 
-            self.last_weather_update is not None and 
-            current_time - self.last_weather_update < self.WEATHER_UPDATE_INTERVAL):
-            return self.weather_cache
-
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=imperial"
-            response = requests.get(url)
-            data = response.json()
-            
-            weather_data = []
-            if 'list' in data:
-                current_date = datetime.now().date()
-                days_processed = set()
-                
-                for item in data['list']:
-                    forecast_date = datetime.fromtimestamp(item['dt']).date()
-                    if forecast_date > current_date and forecast_date not in days_processed and len(weather_data) < 3:
-                        weather_data.append({
-                            'date': forecast_date,
-                            'temp': round(item['main']['temp']),
-                            'temp_min': round(item['main']['temp_min']),
-                            'temp_max': round(item['main']['temp_max']),
-                            'description': item['weather'][0]['main']
-                        })
-                        days_processed.add(forecast_date)
-            
-            self.weather_cache = weather_data
-            self.last_weather_update = current_time
-            
-            return weather_data
-            
-        except Exception as e:
-            logger.error(f"Weather API error: {str(e)}")
-            if self.weather_cache is not None:
-                return self.weather_cache
-            
-            return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
-            ]
-
-
-    # Calendar Todo Drawing
-    def draw_todos(self, image, draw):
-        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
-        
-        events = self.calendar.get_calendar_events()
-        y_offset = 130
-
-        for i, event in enumerate(events):
-            # Format the event text
-            event_text = f"{event['time']} - {event['title']}"
-            
-            # Draw the text
-            draw.text((30, y_offset), f"• {event_text}", font=self.font_small, fill=0)
-            
-            # Draw separator line
-            if i < len(events) - 1:
-                draw.line((40, y_offset + 25, self.width//2 - 20, y_offset + 25), 
-                         fill=0, width=1)
-            
-            y_offset += 35
-
-    def get_weather(self):
-        current_time = time.time()
-        
-        if (self.weather_cache is not None and 
-            self.last_weather_update is not None and 
-            current_time - self.last_weather_update < self.WEATHER_UPDATE_INTERVAL):
-            return self.weather_cache
-
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/forecast?lat={self.location['lat']}&lon={self.location['lon']}&appid={self.weather_api_key}&units=imperial"
-            response = requests.get(url)
-            data = response.json()
-            
-            weather_data = []
-            if 'list' in data:
-                current_date = datetime.now().date()
-                days_processed = set()
-                
-                for item in data['list']:
-                    forecast_date = datetime.fromtimestamp(item['dt']).date()
-                    if forecast_date > current_date and forecast_date not in days_processed and len(weather_data) < 3:
-                        weather_data.append({
-                            'date': forecast_date,
-                            'temp': round(item['main']['temp']),
-                            'temp_min': round(item['main']['temp_min']),
-                            'temp_max': round(item['main']['temp_max']),
-                            'description': item['weather'][0]['main']
-                        })
-                        days_processed.add(forecast_date)
-            
-            self.weather_cache = weather_data
-            self.last_weather_update = current_time
-            
-            return weather_data
-            
-        except Exception as e:
-            logger.error(f"Weather API error: {str(e)}")
-            if self.weather_cache is not None:
-                return self.weather_cache
-            
-            return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
-            ]
-
 
     def get_spotify_track(self):
         return self.spotify.get_formatted_track_info()
@@ -312,9 +194,31 @@ class EventHub:
         draw.text((450 + wifi_icon.width + 10, 25), 
                  f"{wifi_info['ssid']} ({wifi_info['strength']}%)", 
                  font=self.font_small, fill=0)
+        
+    # Calendar Todo Drawing
+    def draw_todos(self, image, draw):
+        draw.text((20, 90), "Today's Schedule:", font=self.font_medium, fill=0)
+        
+        events = self.calendar.get_calendar_events()
+        y_offset = 130
+
+        for i, event in enumerate(events):
+            # Format the event text
+            event_text = f"{event['time']} - {event['title']}"
+            
+            # Draw the text
+            draw.text((30, y_offset), f"• {event_text}", font=self.font_small, fill=0)
+            
+            # Draw separator line
+            if i < len(events) - 1:
+                draw.line((40, y_offset + 25, self.width//2 - 20, y_offset + 25), 
+                         fill=0, width=1)
+            
+            y_offset += 35
+
 
     def draw_weather(self, image, draw):
-        weather_data = self.get_weather()
+        weather_data = self.weather.get_weather()
         draw.text((self.width//2 + 20, 90), f"Weather - {self.location['city']}", 
                 font=self.font_medium, fill=0)
         
@@ -331,7 +235,7 @@ class EventHub:
             date_str = day['date'].strftime("%a\n%b %d")
             date_w = self.font_small.getsize(date_str.split('\n')[0])[0]
             x_center = x_pos + (col_width - date_w) // 2
-            draw.text((x_center, y_start), date_str, font=self.font_small, fill=0)
+            draw.text((x_center - 10, y_start), date_str, font=self.font_small, fill=0)
             
             # Weather icon
             weather_icon = self.weather_icons.get(day['description'], 
@@ -345,7 +249,7 @@ class EventHub:
             temp_str = f"{day['temp_max']}°/{day['temp_min']}°"
             temp_w = self.font_medium.getsize(temp_str)[0]
             x_center = x_pos + (col_width - temp_w) // 2
-            draw.text((x_center, y_start + 120), temp_str, 
+            draw.text((x_center, y_start + 110), temp_str, 
                     font=self.font_medium, fill=0)
             
             # Description
@@ -393,10 +297,8 @@ class EventHub:
     def update_display(self):
         try:
             self.epd.init()
-            
             image, draw = self.draw_frame()
             self.draw_header(image, draw)
-            #self.draw_dummy_todos(image, draw)
             self.draw_todos(image, draw)
             self.draw_spotify(image, draw)
             self.draw_weather(image, draw)

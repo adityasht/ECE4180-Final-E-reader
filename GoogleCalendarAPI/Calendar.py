@@ -18,7 +18,7 @@ class CalendarAPI:
         
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
         self.calendar_service = self.setup_google_calendar()
-        print('setup successful')
+        #print('setup successful')
 
     def setup_google_calendar(self):
         """Set up Google Calendar API service"""
