@@ -11,7 +11,7 @@ import select
 from resources import epd5in83_V2
 from GoogleCalendarAPI.Calendar import CalendarAPI
 from SpotifyAPI.Spotify import SpotifyController
-from OpenWeatherAPI.Weather import WeatherData
+from OpenWeatherMapAPI.Weather import WeatherData
 import select
 
 
@@ -344,6 +344,19 @@ class EventHub:
         else:
             image.paste(self.spotify_icons['pause'], (button_x, button_y))
 
+    def update_display(self):
+            try:
+                self.epd.init()
+                image, draw = self.draw_frame()
+                self.draw_header(image, draw)
+                self.draw_todos(image, draw)
+                self.draw_spotify(image, draw)
+                self.draw_weather(image, draw)
+                
+                self.epd.display(self.epd.getbuffer(image))
+                
+            except Exception as e:
+                logger.error(f"Error updating display: {str(e)}")
 def main():
     try:
         hub = EventHub()
