@@ -74,6 +74,11 @@ class EventHub:
             logger.error(f"Failed to load images: {str(e)}")
             sys.exit(1)
 
+    def get_text_dimensions(self, text, font):
+        """Helper function to get text dimensions using modern PIL methods"""
+        bbox = font.getbbox(text)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    
     def load_and_resize_image(self, filename, size):
         """Load a bitmap image and resize it to the specified size"""
         try:
