@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import requests
 import sys
 import subprocess
+import re
 from resources import epd5in83_V2
 from GoogleCalendarAPI.Calendar import CalendarAPI
 from SpotifyAPI.Spotify import SpotifyController
