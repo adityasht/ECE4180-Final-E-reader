@@ -63,7 +63,9 @@ class WeatherData():
                         'temp': round(avg_temp),
                         'temp_min': round(min_temp),
                         'temp_max': round(max_temp),
-                        'description': daily_temps[date]['description']
+                        'description': daily_temps[date]['description'],
+                        'sunrise': data['city']['sunrise'],  
+                        'sunset': data['city']['sunset']
                     })
                 
                 self.weather_cache = weather_data
