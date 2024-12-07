@@ -18,15 +18,35 @@ from ebooklib import epub
 from PyPDF2 import PdfReader
 import html
 
+
 class EReader:
     def __init__(self, epd, resources_dir):
-        # [Previous init code remains the same]
+        self.epd = epd
+        self.width = epd.width  # 648
+        self.height = epd.height  # 480
+        self.books_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Books')
+        self.current_book = None
+        self.current_page = 0
+        self.book_content = []
+        self.selection_index = 0
+        self.in_book = False
+        
+
+        # Initialize fonts
+        self.font_large = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 36)
+        self.font_medium = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 24)
+        self.font_small = ImageFont.truetype(os.path.join(resources_dir, 'Font.ttc'), 18)
         
         # HTML to text converter
         self.html_converter = html2text.HTML2Text()
         self.html_converter.ignore_links = True
         self.html_converter.ignore_images = True
-        self.html_converter.body_width = 0  # Don't wrap text - we'll do it ourselves
+        self.html_converter.body_width = 0  # 
+        
+        # Create Books directory if it doesn't exist
+        if not os.path.exists(self.books_dir):
+            os.makedirs(self.books_dir)
+
 
     def get_available_books(self):
         """Get list of supported book files in Books directory"""
@@ -132,7 +152,105 @@ class EReader:
         
         return text.strip()
 
-    # [Rest of the class methods remain the same]
+
+    def get_available_books(self):
+        """Get list of supported book files in Books directory"""
+        if not os.path.exists(self.books_dir):
+            return []
+        supported_extensions = ('.txt', '.md', '.epub', '.pdf', '.html', '.htm')
+        return [f for f in os.listdir(self.books_dir) if f.lower().endswith(supported_extensions)]
+
+    def load_book(self, book_name):
+        """Load and paginate book content"""
+        try:
+            file_path = os.path.join(self.books_dir, book_name)
+            content = self.read_book_content(file_path)
+            if content is None:
+                return False
+
+            # Clean up the content
+            content = self.clean_text(content)
+            
+            # Calculate layout parameters
+            char_width = self.font_medium.getsize('x')[0]
+            chars_per_line = (self.width - 60) // char_width
+            lines_per_page = (self.height - 80) // (self.font_medium.getsize('x')[1] + 5)
+            
+            # Paginate content
+            self.book_content = self.paginate_content(content, chars_per_line, lines_per_page)
+            
+            self.current_book = book_name
+            self.current_page = 0
+            self.in_book = True
+            return True
+            
+        except Exception as e:
+            print(f"Error loading book: {e}")
+            return False
+
+    def read_book_content(self, file_path):
+        """Read content from different file formats"""
+        extension = os.path.splitext(file_path)[1].lower()
+        
+        try:
+            if extension == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    return file.read()
+                    
+            elif extension == '.md':
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    md_content = file.read()
+                    # Convert markdown to HTML, then to plain text
+                    html_content = markdown.markdown(md_content)
+                    return self.html_converter.handle(html_content)
+                    
+            elif extension == '.epub':
+                book = epub.read_epub(file_path)
+                content = []
+                for item in book.get_items():
+                    if item.get_type() == epub.ITEM_DOCUMENT:
+                        content.append(self.html_converter.handle(item.get_content().decode('utf-8')))
+                return '\n\n'.join(content)
+                
+            elif extension == '.pdf':
+                content = []
+                with open(file_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    for page in pdf_reader.pages:
+                        content.append(page.extract_text())
+                return '\n\n'.join(content)
+                
+            elif extension in ['.html', '.htm']:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    html_content = file.read()
+                    return self.html_converter.handle(html_content)
+                    
+            else:
+                raise ValueError(f"Unsupported file format: {extension}")
+                
+        except Exception as e:
+            print(f"Error reading file {file_path}: {e}")
+            return None
+
+    def clean_text(self, text):
+        """Clean up text content"""
+        if not text:
+            return ""
+            
+        # Replace multiple newlines with double newline
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        
+        # Remove extra whitespace
+        text = re.sub(r' +', ' ', text)
+        
+        # Remove special characters while preserving basic punctuation
+        text = re.sub(r'[^\w\s\.,!?;:\'"-]', '', text)
+        
+        # Normalize quotes and dashes
+        text = text.replace('"', '"').replace('"', '"')
+        text = text.replace('--', '—')
+        
+        return text.strip()
 
     def paginate_content(self, content, chars_per_line, lines_per_page):
         """Split content into pages"""
@@ -287,9 +405,7 @@ class EReader:
     def update_display(self):
         """Update the e-paper display"""
         try:
-            print(self.epd, '<<<<readerclass')
             self.epd.init()
-            print('after intit')
             if self.in_book:
                 image = self.draw_book_page()
             else:

@@ -49,7 +49,6 @@ def main():
     try:
         # Initialize EventHub and EReader
         hub = EventHub()
-        print(hub.epd)
         reader = EReader(hub.epd, resources_dir)
         current_mode = 'hub'
         last_update = time.time()
