@@ -152,12 +152,6 @@ class EReader:
         return text.strip()
 
 
-    def get_available_books(self):
-        """Get list of supported book files in Books directory"""
-        if not os.path.exists(self.books_dir):
-            return []
-        supported_extensions = ('.txt', '.md', '.epub', '.pdf', '.html', '.htm')
-        return [f for f in os.listdir(self.books_dir) if f.lower().endswith(supported_extensions)]
 
     def load_book(self, book_name):
         """Load and paginate book content"""
@@ -186,6 +180,8 @@ class EReader:
         except Exception as e:
             print(f"Error loading book: {e}")
             return False
+    
+    
 
     def read_book_content(self, file_path):
         """Read content from different file formats"""
@@ -231,25 +227,6 @@ class EReader:
             print(f"Error reading file {file_path}: {e}")
             return None
 
-    def clean_text(self, text):
-        """Clean up text content"""
-        if not text:
-            return ""
-            
-        # Replace multiple newlines with double newline
-        text = re.sub(r'\n\s*\n', '\n\n', text)
-        
-        # Remove extra whitespace
-        text = re.sub(r' +', ' ', text)
-        
-        # Remove special characters while preserving basic punctuation
-        text = re.sub(r'[^\w\s\.,!?;:\'"-]', '', text)
-        
-        # Normalize quotes and dashes
-        text = text.replace('"', '"').replace('"', '"')
-        text = text.replace('--', '—')
-        
-        return text.strip()
 
     def paginate_content(self, content, chars_per_line, lines_per_page):
         """Split content into pages"""
@@ -281,6 +258,7 @@ class EReader:
             pages.append('\n'.join(current_page))
         
         return pages
+    
     def load_book(self, book_name):
         """Load and paginate book content"""
         try:
