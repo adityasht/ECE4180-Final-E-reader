@@ -31,7 +31,6 @@ class WeatherData():
             weather_data = []
             if 'list' in data:
                 current_date = datetime.now().date()
-                # Dictionary to store temperatures for each day
                 daily_temps = {}
                 
                 # First, collect all temperatures for each day
@@ -41,22 +40,27 @@ class WeatherData():
                         if forecast_date not in daily_temps:
                             daily_temps[forecast_date] = {
                                 'temps': [],
-                                'description': item['weather'][0]['main']
+                                'description': item['weather'][0]['main'],
+                                'precipitation': []  # Added precipitation array
                             }
                         daily_temps[forecast_date]['temps'].append({
                             'temp': item['main']['temp'],
                             'temp_min': item['main']['temp_min'],
                             'temp_max': item['main']['temp_max']
                         })
+                        # Get precipitation probability (convert from 0-1 to percentage)
+                        pop = item.get('pop', 0) * 100
+                        daily_temps[forecast_date]['precipitation'].append(pop)
 
-                # Then process each day's data
-                for date in sorted(daily_temps.keys())[:3]:  # Get first 3 days
+                # Process each day's data
+                for date in sorted(daily_temps.keys())[:5]:  # Get first 5 days
                     day_temps = daily_temps[date]['temps']
                     
-                    # Find true min and max
+                    # Calculate statistics
                     min_temp = min(t['temp_min'] for t in day_temps)
                     max_temp = max(t['temp_max'] for t in day_temps)
                     avg_temp = sum(t['temp'] for t in day_temps) / len(day_temps)
+                    avg_precip = sum(daily_temps[date]['precipitation']) / len(daily_temps[date]['precipitation'])
                     
                     weather_data.append({
                         'date': date,
@@ -64,7 +68,8 @@ class WeatherData():
                         'temp_min': round(min_temp),
                         'temp_max': round(max_temp),
                         'description': daily_temps[date]['description'],
-                        'sunrise': data['city']['sunrise'],  
+                        'precipitation': round(avg_precip),  # Added precipitation percentage
+                        'sunrise': data['city']['sunrise'],
                         'sunset': data['city']['sunset']
                     })
                 
@@ -78,10 +83,13 @@ class WeatherData():
             if self.weather_cache is not None:
                 return self.weather_cache
             
+            # Fallback data with precipitation
             return [
-                {'date': datetime.now().date() + timedelta(days=1), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Sunny'},
-                {'date': datetime.now().date() + timedelta(days=2), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Cloudy'},
-                {'date': datetime.now().date() + timedelta(days=3), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear'}
+                {'date': datetime.now().date(), 'temp': 68, 'temp_min': 60, 'temp_max': 75, 'description': 'Clear', 'precipitation': 10, 'sunrise': int(time.time()), 'sunset': int(time.time()) + 43200},
+                {'date': datetime.now().date() + timedelta(days=1), 'temp': 65, 'temp_min': 58, 'temp_max': 72, 'description': 'Clouds', 'precipitation': 30},
+                {'date': datetime.now().date() + timedelta(days=2), 'temp': 70, 'temp_min': 62, 'temp_max': 78, 'description': 'Clear', 'precipitation': 0},
+                {'date': datetime.now().date() + timedelta(days=3), 'temp': 72, 'temp_min': 63, 'temp_max': 81, 'description': 'Rain', 'precipitation': 80},
+                {'date': datetime.now().date() + timedelta(days=4), 'temp': 69, 'temp_min': 61, 'temp_max': 77, 'description': 'Clouds', 'precipitation': 20}
             ]
     
     def weather_cache(self):

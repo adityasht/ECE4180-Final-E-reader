@@ -197,7 +197,7 @@ class EventHub:
             wifi_icon = self.wifi_icons['none']
         
         # Place WiFi icon and text with truncation
-        image.paste(wifi_icon, (450, 15))
+        image.paste(wifi_icon, (450, 20))
         wifi_text = f"{wifi_info['ssid']} ({wifi_info['strength']}%)"
         if self.get_text_dimensions(wifi_text, self.font_small)[0] > 150:  # Adjust threshold as needed
             while self.get_text_dimensions(wifi_text + "...", self.font_small)[0] > 150:
@@ -237,14 +237,19 @@ class EventHub:
         draw.text((self.width//2 + 20, 90), f"Weather - {self.location['city']}", 
                 font=self.font_medium, fill=0)
         
-        # Today's detailed section
+        # Today's detailed section (top portion)
         x_start = self.width//2 + 30
         y_start = 130
         
-        # Current temperature
+        # Current temperature and precipitation
         current_temp = f"{today_data['temp']}°F"
+        precip = f"{today_data['precipitation']}% ☔"  # Added precipitation
+        
+        # Draw current conditions
         draw.text((x_start, y_start), "Now:", font=self.font_medium, fill=0)
+        temp_width = self.get_text_dimensions(current_temp, self.font_large)[0]
         draw.text((x_start + 100, y_start), current_temp, font=self.font_large, fill=0)
+        draw.text((x_start + 100 + temp_width + 20, y_start + 10), precip, font=self.font_medium, fill=0)
         
         # High/Low temperatures
         y_start += 50
@@ -264,15 +269,15 @@ class EventHub:
         # Separator line
         draw.line((self.width//2 + 20, y_start + 60, self.width - 20, y_start + 60), fill=0)
         
-        # Future forecast
+        # Future forecast (bottom portion with 4 days)
         y_start += 80
-        col_width = (self.width//2 - 40) // 2
+        col_width = (self.width//2 - 40) // 4  # Divide space into 4 columns
         
-        for i, day in enumerate(weather_data[1:3]):
+        for i, day in enumerate(weather_data[1:5]):  # Show next 4 days
             x_pos = self.width//2 + 20 + (i * col_width)
             
             if i > 0:
-                draw.line((x_pos - 5, y_start, x_pos - 5, y_start + 120), fill=0)
+                draw.line((x_pos - 5, y_start, x_pos - 5, y_start + 140), fill=0)
             
             # Date
             date_str = day['date'].strftime("%a\n%b %d")
@@ -281,15 +286,26 @@ class EventHub:
             draw.text((x_center, y_start), date_str, font=self.font_small, fill=0)
             
             # Weather icon
-            weather_icon = self.weather_icons.get(day['description'], self.weather_icons['default'])
-            icon_pos = self.center_image(weather_icon, x_pos + col_width//2, y_start + 60)
+            weather_icon = self.weather_icons.get(day['description'], 
+                                                self.weather_icons['default'])
+            icon_pos = self.center_image(weather_icon, 
+                                    x_pos + col_width//2, 
+                                    y_start + 60)
             image.paste(weather_icon, icon_pos)
             
             # Temperature range
             temp_str = f"{day['temp_max']}°/{day['temp_min']}°"
-            temp_width = self.get_text_dimensions(temp_str, self.font_medium)[0]
+            temp_width = self.get_text_dimensions(temp_str, self.font_small)[0]
             x_center = x_pos + (col_width - temp_width) // 2
-            draw.text((x_center, y_start + 100), temp_str, font=self.font_medium, fill=0)
+            draw.text((x_center, y_start + 100), temp_str, 
+                    font=self.font_small, fill=0)
+            
+            # Precipitation chance
+            precip_str = f"{day['precipitation']}%"
+            precip_width = self.get_text_dimensions(precip_str, self.font_small)[0]
+            x_center = x_pos + (col_width - precip_width) // 2
+            draw.text((x_center, y_start + 120), precip_str, 
+                    font=self.font_small, fill=0)
 
     def draw_spotify(self, image, draw):
         music_data = self.get_spotify_track()
